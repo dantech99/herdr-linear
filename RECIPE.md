@@ -43,6 +43,10 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   `muted`; `No folder: open a space in a git repo` in `ansi1` when there is none.
 - **Branch**: a 30px input, radius 8, prefilled with Linear's suggested branch (`branchName`, e.g.
   `dan/eng-123-fix-login`), else `<identifier>-<first five title words>`.
+- **Instructions**: a textarea in the same frame (10px by 6px padding), 3 rows growing to 8, placeholder
+  `Anything the agent should know or do (optional)`.
+- **Skill: starts the agent's first message**: a 30px input like Branch, placeholder
+  `/skill-name (optional)`, prefilled with the last skill used.
 - **Agent**: a wrapping row of 26px chips, radius 7, one per installed agent with its icon at 14px;
   the chosen one `selected`/`foreground`, the others `raised`/`muted`.
 - **Model** (only for agents it knows): a filter input, then a 150px scrolling list. First row
@@ -84,8 +88,11 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   flattened to one line and cut at 600 characters, an ask to read the full issue if it has Linear
   access, to follow AGENTS.md/CLAUDE.md, run lint, typecheck and tests, push and open a PR that
   mentions the identifier, and not to merge or deploy. With the subagents option on, it also asks
-  the agent to delegate exploration and verification to subagents. The new space is shown.
-- The dialog remembers the last agent, model, reasoning and subagents choice (shared
+  the agent to delegate exploration and verification to subagents. A skill, when given, comes first
+  in the task as typed (`/review Work on Linear issue …`), so an agent that reads a leading command
+  (Claude Code's `/skill`) runs it with the rest as its input. Instructions, when given, follow the
+  description as `Instructions: …`. The new space is shown.
+- The dialog remembers the last agent, model, reasoning, subagents choice and skill (shared
   `linear-agent.last`) and caches each machine's model lists for an hour (shared
   `linear-agent.models`).
 - Command: `linear.refresh` reloads. Bind it in `keys.json` or run `herdr-app do linear.refresh`.
@@ -139,11 +146,14 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   and readable only by you: `chmod 600 ~/.config/herdr-app/linear.json`. Create a personal key in
   Linear under Settings → Security & access.
 - `task` is typed into the agent as one line: a newline would send it early, so every text from
-  Linear in it (title, description, URL) and the branch have control characters and runs of
-  whitespace replaced by one space.
+  Linear in it (title, description, URL), the branch, the skill and the instructions have control
+  characters and runs of whitespace replaced by one space: line breaks typed in Instructions become
+  spaces.
 - The description is written by whoever filed the issue and goes into the agent's first message.
   Agents run with whatever permissions their own config gives them; the task tells them to push and
   open a PR.
+- The skill is passed through as typed, not checked: each agent has its own syntax (`/name` in
+  Claude Code). Instructions are not remembered: they belong to one issue.
 - "Subagents" is only an instruction in the task. The mod starts one agent; whether it delegates
   is up to that agent.
 - Mapped `repos` folders are on this computer; for a remote space, leave its team unmapped so the
@@ -162,3 +172,5 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
 - `Agent` on an issue in a space inside a git repo, Claude Code, `haiku`, `low`, Start: a new space
   opens on `~/.herdr/worktrees/<repo>/<branch>`, its tab is named after the identifier, and the task
   is the agent's first message.
+- With `/review` as the skill and an instruction, the agent's first message starts with `/review` and
+  ends its issue part with `Instructions: …`; the next dialog shows `/review` again.
