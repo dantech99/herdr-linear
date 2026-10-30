@@ -39,7 +39,9 @@ As a popup it is 460×620 px, centered.
 titled in 11px `dim`). The title block and the footer stay; the sections between them scroll:
 
 - `Start an agent on ENG-123` at 14px semibold, the issue title under it in `dim`, truncated.
-- **Repository**: the folder the worktree is made from (and `· <machine>` for a remote space) in
+- **Repository**: with more than one to choose from, a wrapping row of 26px chips like Agent's, one
+  per repository named after its folder (`· <machine>` for a remote one), the chosen one
+  `selected`; under them (or alone) the chosen folder (and `· <machine>` for a remote space) in
   `muted`; `No folder: open a space in a git repo` in `ansi1` when there is none.
 - **Branch**: a 30px input, radius 8, prefilled with Linear's suggested branch (`branchName`, e.g.
   `dan/eng-123-fix-login`), else `<identifier>-<first five title words>`.
@@ -62,9 +64,10 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
 ## How it behaves
 
 - It doesn't show agent statuses: it lists Linear issues, not agents. Nothing animates.
-- It loads the issues assigned to you that are not completed or canceled, up to 100, most recently
-  updated first, on open, every 60 s and on `Refresh`. A load that finishes after a newer one
-  started is dropped.
+- It loads every issue assigned to you that is not completed or canceled, most recently updated
+  first, 250 a page (Linear's largest) following `endCursor` until the last page, at most 40 pages.
+  It loads on open, every 60 s and on `Refresh`. A load that finishes after a newer one started is
+  dropped.
 - The API key is `apiKey` in `~/.config/herdr-app/linear.json`, else `LINEAR_API_KEY` from the shell
   agents start in. It is sent only to `https://api.linear.app/graphql` as the `Authorization` header.
 - Status chips filter by Linear's state types: `Todo` is `unstarted`, `In progress` is `started`,
@@ -75,6 +78,8 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
 - `Agent` opens the dialog without opening the browser. The repository is the team's folder in
   `linear.json` `repos` (on this computer) when the issue's team is mapped, else the focused pane's
   folder (else the focused terminal's, else the shown space's folder) on that space's machine.
+  The folders in `linear.json` `repoChoices` (on this computer) follow it as chips, once each;
+  clicking one makes the worktree there instead.
 - In the dialog, Enter in the branch field starts. A branch that is empty, starts with `-` (git
   would read it as an option) or fails `git check-ref-format --branch` is refused with its reason.
   Start makes a worktree at
@@ -104,16 +109,19 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   `{ "place": "none", "title": "Linear", "overlay": { "width": 460, "height": 620 } }`, so
   `mod.open {name: "linear"}` shows it as a popup and no layout docks it. `linear.svg`: a 24×24
   circle with a check, stroked `currentColor`, for a tab-bar button in a cloned layout.
-- `mods/linear/linear.js`: pure helpers, no Herdr imports: `ISSUES_QUERY`, `STATUSES`,
-  `parseConfig`, `parseIssues`, `linearError`, `filterIssues`, `ago`. The query:
-  `viewer { assignedIssues(first: 100, orderBy: updatedAt, filter: { state: { type: { nin:
-  ["completed", "canceled"] } } }) { nodes { id identifier title url branchName priority
+- `mods/linear/linear.js`: pure helpers, no Herdr imports: `ISSUES_QUERY`, `PAGE_SIZE` (250),
+  `MAX_PAGES` (40), `STATUSES`, `parseConfig`, `repoOptions`, `parseIssues`, `nextCursor`,
+  `linearError`, `filterIssues`, `ago`. The query, with variables `$first: Int!` and `$after: String`:
+  `viewer { assignedIssues(first: $first, after: $after, orderBy: updatedAt, filter: { state: {
+  type: { nin: ["completed", "canceled"] } } }) { pageInfo { hasNextPage endCursor } nodes { id
+  identifier title url branchName priority
   priorityLabel updatedAt description state { name type color } team { key name } labels { nodes {
   name color } } } } }`.
 - `mods/linear/urls.js` (`safeUrl`: https only) and `mods/linear/open.js` (`openUrl`, by
   `window().platform`).
 - `mods/linear-agent/main.js`: the dialog, a `View` opened with `openOverlay({ mod: "linear-agent",
-  kind: "dialog", width: 480, height: 660, props: { issue, cwd, on } })`. `mod.json`:
+  kind: "dialog", width: 480, height: 660, props: { issue, cwd, on, repos } })` (`repos`: `{ cwd,
+  on }` options, the default first). `mod.json`:
   `{ "place": "none", "overlay": { "width": 480, "height": 660 } }`. Uses `knownAgents({ on })`
   (installed only), `exec` for git, `home`, `shared`/`setShared`, `run("space.new", { folder,
   machine, tab, argv, task })`. Adapted from the `issue-agent` mod in obrunogonzaga/herdr-mods
@@ -156,9 +164,11 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   Claude Code). Instructions are not remembered: they belong to one issue.
 - "Subagents" is only an instruction in the task. The mod starts one agent; whether it delegates
   is up to that agent.
-- Mapped `repos` folders are on this computer; for a remote space, leave its team unmapped so the
-  space's own folder and machine are used.
-- Only the first 100 assigned issues load; the count is of what loaded.
+- Mapped `repos` and `repoChoices` folders are on this computer; for a remote space, leave its team
+  unmapped so the space's own folder and machine are used.
+- `repos` maps a team to one folder. A team whose work spans several repos maps its main one and
+  lists the rest in `repoChoices`.
+- Loading stops after 40 pages (10,000 issues); the count is of what loaded.
 
 ## Done when
 
