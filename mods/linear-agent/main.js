@@ -80,6 +80,8 @@ export default class LinearAgent extends View {
     this.agents = []; this.models = []; this.filter = "";
     const last = shared(LAST_CHOICE) ?? {};
     this.subagents = Boolean(last.subagents);
+    this.repos = props()?.repos ?? [];
+    this.repo = this.repos[0] ?? { cwd: props()?.cwd, on: props()?.on };
     this.branchInput = InputState.new({ value: this.issue.identifier ? branchFor(this.issue) : "", placeholder: "branch name" });
     this.filterInput = InputState.new({ placeholder: "filter or type a model" });
     this.skillInput = InputState.new({ value: last.skill ?? "", placeholder: "/skill-name (optional)" });
@@ -135,7 +137,7 @@ export default class LinearAgent extends View {
   start(cx) {
     const branch = this.branchInput.value().trim();
     if (this.busy || !this.agent || !branch || !this.issue.identifier) return;
-    const { cwd, on } = props(), agent = this.agent, model = this.chosenModelId(), effort = this.effort;
+    const { cwd, on } = this.repo, agent = this.agent, model = this.chosenModelId(), effort = this.effort;
     const subagents = this.subagents, issue = this.issue;
     const skill = this.skillInput.value().trim(), instructions = this.instructionsInput.value();
     const argv = [...agent.run, ...(adapterFor(agent)?.flags(model, effort) ?? [])];
@@ -212,16 +214,26 @@ export default class LinearAgent extends View {
         .on_click((_e, cx) => this.start(cx)).child(this.busy ? "Starting…" : "Start agent"));
   }
 
+  // One chip per repository when there's a choice, named after its folder; else the folder itself.
+  repoRow(t) {
+    const { cwd, on } = this.repo;
+    const label = div().text_color(cwd ? t.muted : t.ansi1).truncate()
+      .child(cwd ? `${cwd}${on ? `  ·  ${on}` : ""}` : "No folder: open a space in a git repo");
+    if (this.repos.length < 2) return label;
+    return v_flex().gap(6).child(h_flex().flex_wrap().gap(6).children(this.repos.map((r, i) =>
+      this.chip(`repo-${i}`, `${r.cwd.split("/").pop()}${r.on ? ` · ${r.on}` : ""}`, this.repo === r, () => { this.repo = r; }, t))))
+      .child(label);
+  }
+
   render() {
-    const t = theme(), hasModels = this.agent && adapterFor(this.agent), where = props()?.cwd;
+    const t = theme(), hasModels = this.agent && adapterFor(this.agent);
     // The sections scroll and the footer stays, so Start is always reachable in a short window.
     return v_flex().id("linear-agent").size_full().p(16).gap(14).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(v_flex().flex_none().gap(2)
         .child(div().text_size(14).font_semibold().child(`Start an agent on ${this.issue.identifier}`))
         .child(div().text_color(t.dim).truncate().child(this.issue.title)))
       .child(v_flex().id("linear-agent-body").flex_1().min_h(0).overflow_y_scrollbar().gap(14)
-        .child(this.section("Repository", div().text_color(where ? t.muted : t.ansi1).truncate()
-          .child(where ? `${where}${props()?.on ? `  ·  ${props().on}` : ""}` : "No folder: open a space in a git repo"), t))
+        .child(this.section("Repository", this.repoRow(t), t))
         .child(this.section("Branch", this.field(this.branchInput, t), t))
         .child(this.section("Instructions", div().px(10).py(6).rounded(8).border_1().border_color(t.border).bg(t.background)
           .child(Textarea.new(this.instructionsInput).w_full().text_size(12).text_color(t.foreground)), t))

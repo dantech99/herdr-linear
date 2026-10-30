@@ -21,12 +21,12 @@ test("the query asks only for the viewer's open issues", () => {
 
 test("parseConfig reads apiKey and expands ~ in team repos", () => {
   const config = parseConfig('{ "apiKey": " lin_api_x ", "repos": { "ENG": "~/dev/app", "OPS": "/srv/ops" } }', "/home/me");
-  assert.deepEqual(config, { apiKey: "lin_api_x", repos: { ENG: "/home/me/dev/app", OPS: "/srv/ops" } });
+  assert.deepEqual(config, { apiKey: "lin_api_x", repos: { ENG: "/home/me/dev/app", OPS: "/srv/ops" }, repoChoices: [] });
 });
 
 test("parseConfig tolerates a missing or broken file", () => {
-  assert.deepEqual(parseConfig(null, "/h"), { apiKey: null, repos: {} });
-  assert.deepEqual(parseConfig("not json", "/h"), { apiKey: null, repos: {}, error: "linear.json is not valid JSON" });
+  assert.deepEqual(parseConfig(null, "/h"), { apiKey: null, repos: {}, repoChoices: [] });
+  assert.deepEqual(parseConfig("not json", "/h"), { apiKey: null, repos: {}, repoChoices: [], error: "linear.json is not valid JSON" });
 });
 
 test("parseIssues flattens labels and keeps what rows need", () => {
