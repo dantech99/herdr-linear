@@ -8,7 +8,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
 import { exec, run, props, closeOverlay, theme, knownAgents, home, shared, setShared } from "herdr";
 import { adapterFor } from "./agents.js";
-import { branchFor, worktreeFolder, branchProblem, taskFor } from "./task.js";
+import { branchFor, worktreeFolder, branchProblem, checkoutOf, taskFor } from "./task.js";
 
 const LAST_CHOICE = "linear-agent.last";
 const MODEL_CACHE = "linear-agent.models";
@@ -51,18 +51,27 @@ async function mainCheckout(cwd, on) {
   return common.out.endsWith("/.git") ? common.out.slice(0, -5) : common.out;
 }
 
+// A local branch as it is; one only on origin tracks it; a new one starts from the default branch.
+async function addArgs(main, on, branch, path) {
+  if ((await git(main, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], on)).ok) return ["worktree", "add", path, branch];
+  if ((await git(main, ["fetch", "origin", branch], on)).ok) return ["worktree", "add", "--track", "-b", branch, path, `origin/${branch}`];
+  return ["worktree", "add", "-b", branch, path, await baseRef(main, on)];
+}
+
 // Herdr's own worktree path, so the spaces sidebar nests it and Herdr's worktree dialog can remove it.
+// A branch already checked out (in the main checkout or another worktree) is worked on there: git
+// allows one checkout per branch. { folder, existing }.
 async function createWorktree(cwd, on, branch, identifier) {
   const problem = branchProblem(branch);
   if (problem) throw new Error(problem);
   const main = await mainCheckout(cwd, on);
   if (!(await git(main, ["check-ref-format", "--branch", branch], on)).ok) throw new Error(`Not a valid branch name: ${branch}`);
+  const checkout = checkoutOf((await git(main, ["worktree", "list", "--porcelain"], on)).out, branch);
+  if (checkout) return { folder: checkout, existing: true };
   const path = `${await userHome(on)}/.herdr/worktrees/${main.split("/").pop()}/${worktreeFolder(branch, identifier)}`;
-  const exists = (await git(main, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], on)).ok;
-  const add = exists ? ["worktree", "add", path, branch] : ["worktree", "add", "-b", branch, path, await baseRef(main, on)];
-  const r = await git(main, add, on);
+  const r = await git(main, await addArgs(main, on, branch, path), on);
   if (!r.ok) throw new Error(r.err.split("\n").pop() || "git worktree add failed");
-  return path;
+  return { folder: path, existing: false };
 }
 
 async function modelsFor(agent, on) {
@@ -144,9 +153,10 @@ export default class LinearAgent extends View {
     this.busy = true; this.error = null;
     cx.spawn(async (cx) => {
       try {
-        const folder = await createWorktree(cwd, on, branch, issue.identifier);
+        const { folder, existing } = await createWorktree(cwd, on, branch, issue.identifier);
         setShared(LAST_CHOICE, { agent: agent.key, model, effort, subagents, skill });
-        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task: taskFor(issue, branch, { subagents, skill, instructions }) });
+        const task = taskFor(issue, branch, { subagents, skill, instructions, existing });
+        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task });
         closeOverlay(props().overlay);
       } catch (e) { this.error = String(e.message ?? e); }
       finally { this.busy = false; cx.notify(); }

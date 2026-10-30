@@ -82,16 +82,21 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   clicking one makes the worktree there instead.
 - In the dialog, Enter in the branch field starts. A branch that is empty, starts with `-` (git
   would read it as an option) or fails `git check-ref-format --branch` is refused with its reason.
-  Start makes a worktree at
+  A branch already checked out, in the main checkout or any worktree (`git worktree list
+  --porcelain`), is worked on in that checkout: git allows one checkout per branch. Otherwise Start
+  makes a worktree at
   `~/.herdr/worktrees/<repo>/<branch, slashes as dashes>` (the identifier when that leaves nothing
   but dots) on that machine (Herdr's own worktree
-  path, so the spaces sidebar nests it and Herdr's worktree dialog can remove it). It branches from
-  `origin/<default branch>` after a fetch (the default branch from `origin/HEAD`, else `main` or
-  `master`), or from `HEAD` without an origin; an existing branch is checked out instead. Then
-  `space.new` opens it with a tab named after the identifier, `argv` the agent's command plus its
-  model and reasoning flags, and `task` one line: the identifier, title and URL, the description
-  flattened to one line and cut at 600 characters, an ask to read the full issue if it has Linear
-  access, to follow AGENTS.md/CLAUDE.md, run lint, typecheck and tests, push and open a PR that
+  path, so the spaces sidebar nests it and Herdr's worktree dialog can remove it): a local branch is
+  checked out as it is; a branch only on origin is fetched and tracked (`--track -b <branch>
+  origin/<branch>`); a new one branches from `origin/<default branch>` after a fetch (the default
+  branch from `origin/HEAD`, else `main` or `master`), or from `HEAD` without an origin. Then
+  `space.new` opens the checkout with a tab named after the identifier, `argv` the agent's command
+  plus its model and reasoning flags, and `task` one line: the identifier, title and URL, the
+  description flattened to one line and cut at 600 characters, an ask to read the full issue if it
+  has Linear access, where it is (`a fresh worktree on branch …`, or `an existing checkout of branch
+  …` with an ask to keep its uncommitted work), to follow AGENTS.md/CLAUDE.md, run lint, typecheck
+  and tests, push and open a PR that
   mentions the identifier, and not to merge or deploy. With the subagents option on, it also asks
   the agent to delegate exploration and verification to subagents. A skill, when given, comes first
   in the task as typed (`/review Work on Linear issue …`), so an agent that reads a leading command
@@ -127,7 +132,7 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
   machine, tab, argv, task })`. Adapted from the `issue-agent` mod in obrunogonzaga/herdr-mods
   (MIT).
 - `mods/linear-agent/task.js`: pure `branchFor`, `folderName`, `worktreeFolder`, `branchProblem`,
-  `taskFor`.
+  `checkoutOf` (where a branch is checked out, from `git worktree list --porcelain`), `taskFor`.
 - `mods/linear-agent/agents.js`: one adapter per CLI, matched by the agent's key or program, copied
   from issue-agent:
   | Agent | Models from | Flags |
@@ -182,5 +187,8 @@ titled in 11px `dim`). The title block and the footer stay; the sections between
 - `Agent` on an issue in a space inside a git repo, Claude Code, `haiku`, `low`, Start: a new space
   opens on `~/.herdr/worktrees/<repo>/<branch>`, its tab is named after the identifier, and the task
   is the agent's first message.
+- With the branch the main checkout is on, Start opens the space on the main checkout instead and
+  the task says `existing checkout`; with a branch only on origin, the new worktree tracks
+  `origin/<branch>`.
 - With `/review` as the skill and an instruction, the agent's first message starts with `/review` and
   ends its issue part with `Instructions: …`; the next dialog shows `/review` again.

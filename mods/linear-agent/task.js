@@ -38,9 +38,20 @@ function summary(description) {
   return flat.length > DESCRIPTION_MAX ? `${flat.slice(0, DESCRIPTION_MAX)}…` : flat;
 }
 
+// Where `branch` is checked out, from `git worktree list --porcelain` (the main checkout included), or null.
+export function checkoutOf(porcelain, branch) {
+  for (const block of porcelain.split(/\n\s*\n/)) {
+    const lines = block.split("\n");
+    const path = lines.find((l) => l.startsWith("worktree "))?.slice(9);
+    if (path && lines.includes(`branch refs/heads/${branch}`)) return path;
+  }
+  return null;
+}
+
 // Typed into the agent as one line: a newline would send it early. A skill (`/review`) goes
 // first, where agents look for a command; the person's own instructions follow the issue.
-export function taskFor(raw, rawBranch, { subagents, skill = "", instructions = "" }) {
+// `existing`: the branch was already checked out there, so its work may be uncommitted.
+export function taskFor(raw, rawBranch, { subagents, skill = "", instructions = "", existing = false }) {
   const issue = { identifier: plain(raw.identifier), title: plain(raw.title), url: plain(raw.url) };
   const branch = plain(rawBranch), about = summary(raw.description), command = plain(skill), extra = plain(instructions);
   return [
@@ -49,7 +60,8 @@ export function taskFor(raw, rawBranch, { subagents, skill = "", instructions = 
     about ? `Summary: ${about}` : null,
     extra ? `Instructions: ${extra}` : null,
     "If you have Linear access (MCP or CLI), read the full issue and its comments first.",
-    `You are in a fresh worktree on branch ${branch}.`,
+    existing ? `You are in an existing checkout of branch ${branch}; keep any uncommitted work in it.`
+      : `You are in a fresh worktree on branch ${branch}.`,
     "Read the repo's AGENTS.md / CLAUDE.md before changing code.",
     subagents ? "Delegate exploration and verification to subagents where your tool supports them." : null,
     "Run the project's lint, typecheck and tests before committing.",
