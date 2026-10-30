@@ -66,3 +66,16 @@ test("taskFor strips control characters from Linear's text", () => {
   assert.doesNotMatch(task, /[\u0000-\u001f\u007f-\u009f]/);
   assert.match(task, /t x/);
 });
+
+test("taskFor starts with the skill and adds the instructions", () => {
+  const task = taskFor(issue, "b", { subagents: false, skill: " /review ", instructions: "Only touch\nthe API.\u0003" });
+  assert.ok(task.startsWith("/review Work on Linear issue ENG-12"));
+  assert.match(task, /Instructions: Only touch the API\./);
+  assert.doesNotMatch(task, /[\u0000-\u001f\u007f-\u009f]/);
+});
+
+test("taskFor leaves skill and instructions out when blank", () => {
+  const task = taskFor(issue, "b", { subagents: false, skill: "  ", instructions: "\n" });
+  assert.ok(task.startsWith("Work on Linear issue"));
+  assert.doesNotMatch(task, /Instructions/);
+});

@@ -17,7 +17,8 @@ agent on one in a fresh git worktree.
 
 Press `Agent` on an issue, then pick an installed agent (Claude Code, Codex, OpenCode, Pi…), a
 model and a reasoning level. It creates a worktree on Linear's suggested branch and starts the agent
-with the issue as its task. Optionally asks the agent to use subagents.
+with the issue as its task. Optionally add your own instructions, a skill to run first (e.g.
+`/review`, typed at the start of the agent's first message), and ask the agent to use subagents.
 
 ## Install
 

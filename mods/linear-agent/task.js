@@ -38,13 +38,16 @@ function summary(description) {
   return flat.length > DESCRIPTION_MAX ? `${flat.slice(0, DESCRIPTION_MAX)}…` : flat;
 }
 
-// Typed into the agent as one line: a newline would send it early.
-export function taskFor(raw, rawBranch, { subagents }) {
+// Typed into the agent as one line: a newline would send it early. A skill (`/review`) goes
+// first, where agents look for a command; the person's own instructions follow the issue.
+export function taskFor(raw, rawBranch, { subagents, skill = "", instructions = "" }) {
   const issue = { identifier: plain(raw.identifier), title: plain(raw.title), url: plain(raw.url) };
-  const branch = plain(rawBranch), about = summary(raw.description);
+  const branch = plain(rawBranch), about = summary(raw.description), command = plain(skill), extra = plain(instructions);
   return [
+    command || null,
     `Work on Linear issue ${issue.identifier}: ${issue.title} (${issue.url}).`,
     about ? `Summary: ${about}` : null,
+    extra ? `Instructions: ${extra}` : null,
     "If you have Linear access (MCP or CLI), read the full issue and its comments first.",
     `You are in a fresh worktree on branch ${branch}.`,
     "Read the repo's AGENTS.md / CLAUDE.md before changing code.",

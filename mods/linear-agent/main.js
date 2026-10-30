@@ -1,11 +1,11 @@
 // Start an agent on a Linear issue: props { issue, cwd, on }.
 // Makes a worktree from the default branch and a space running the agent with the issue as its task.
 // Adapted from the `issue-agent` mod in obrunogonzaga/herdr-mods (MIT, Copyright (c) 2026 Bruno Gonzaga):
-// Linear issues instead of GitHub ones, the base branch from git instead of gh, a repository line
-// and a subagents option.
+// Linear issues instead of GitHub ones, the base branch from git instead of gh, a repository line,
+// a subagents option, and a skill and instructions of your own.
 
 import { View, div, svg, image } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
 import { exec, run, props, closeOverlay, theme, knownAgents, home, shared, setShared } from "herdr";
 import { adapterFor } from "./agents.js";
 import { branchFor, worktreeFolder, branchProblem, taskFor } from "./task.js";
@@ -82,6 +82,9 @@ export default class LinearAgent extends View {
     this.subagents = Boolean(last.subagents);
     this.branchInput = InputState.new({ value: this.issue.identifier ? branchFor(this.issue) : "", placeholder: "branch name" });
     this.filterInput = InputState.new({ placeholder: "filter or type a model" });
+    this.skillInput = InputState.new({ value: last.skill ?? "", placeholder: "/skill-name (optional)" });
+    this.instructionsInput = TextareaState.new({ placeholder: "Anything the agent should know or do (optional)" });
+    this.instructionsInput.set_auto_grow(3, 8);
     this.filterInput.on("change", (_e, cx) => { this.filter = this.filterInput.value().trim(); cx.notify(); });
     this.branchInput.on("submit", (_e, cx) => this.start(cx));
     this.loadAgents(cx);
@@ -134,13 +137,14 @@ export default class LinearAgent extends View {
     if (this.busy || !this.agent || !branch || !this.issue.identifier) return;
     const { cwd, on } = props(), agent = this.agent, model = this.chosenModelId(), effort = this.effort;
     const subagents = this.subagents, issue = this.issue;
+    const skill = this.skillInput.value().trim(), instructions = this.instructionsInput.value();
     const argv = [...agent.run, ...(adapterFor(agent)?.flags(model, effort) ?? [])];
     this.busy = true; this.error = null;
     cx.spawn(async (cx) => {
       try {
         const folder = await createWorktree(cwd, on, branch, issue.identifier);
-        setShared(LAST_CHOICE, { agent: agent.key, model, effort, subagents });
-        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task: taskFor(issue, branch, { subagents }) });
+        setShared(LAST_CHOICE, { agent: agent.key, model, effort, subagents, skill });
+        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task: taskFor(issue, branch, { subagents, skill, instructions }) });
         closeOverlay(props().overlay);
       } catch (e) { this.error = String(e.message ?? e); }
       finally { this.busy = false; cx.notify(); }
@@ -219,6 +223,9 @@ export default class LinearAgent extends View {
         .child(this.section("Repository", div().text_color(where ? t.muted : t.ansi1).truncate()
           .child(where ? `${where}${props()?.on ? `  ·  ${props().on}` : ""}` : "No folder: open a space in a git repo"), t))
         .child(this.section("Branch", this.field(this.branchInput, t), t))
+        .child(this.section("Instructions", div().px(10).py(6).rounded(8).border_1().border_color(t.border).bg(t.background)
+          .child(Textarea.new(this.instructionsInput).w_full().text_size(12).text_color(t.foreground)), t))
+        .child(this.section("Skill: starts the agent's first message", this.field(this.skillInput, t), t))
         .child(this.section("Agent", this.agentRow(t), t))
         .when(Boolean(hasModels), (e) => e.child(this.section("Model", this.modelList(t), t)).child(this.section("Reasoning", this.effortRow(t), t)))
         .child(this.section("Options", h_flex().child(this.chip("subagents", this.subagents ? "✓ Ask it to use subagents" : "Ask it to use subagents",
