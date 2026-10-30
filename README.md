@@ -3,13 +3,21 @@
 A [Herdr](https://herdr.dev) mod that lists the Linear issues assigned to you and starts a coding
 agent on one in a fresh git worktree.
 
-![Linear](preview.png)
+## Your issues
+
+![The Linear panel listing open issues](preview.png)
 
 - Your open issues (not completed or canceled), with state, priority and labels.
 - Filter by `Todo`, `In progress`, `Backlog`, or by id and title.
-- `Agent` on an issue: pick an installed agent (Claude Code, Codex, OpenCode, Pi…), a model and a
-  reasoning level. It creates a worktree on Linear's suggested branch and starts the agent with the
-  issue as its task. Optionally asks the agent to use subagents.
+- Click an issue to open it in your browser.
+
+## Start an agent on an issue
+
+![The agent dialog for an issue](select-issue.png)
+
+Press `Agent` on an issue, then pick an installed agent (Claude Code, Codex, OpenCode, Pi…), a
+model and a reasoning level. It creates a worktree on Linear's suggested branch and starts the agent
+with the issue as its task. Optionally asks the agent to use subagents.
 
 ## Install
 
