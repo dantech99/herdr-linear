@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { branchFor, folderName, worktreeFolder, branchProblem, taskFor } from "../mods/linear-agent/task.js";
+import { branchFor, folderName, worktreeFolder, branchProblem, checkoutOf, taskFor } from "../mods/linear-agent/task.js";
 
 const issue = {
   identifier: "ENG-12", title: "Fix login with SSO", url: "https://linear.app/acme/issue/ENG-12/fix-login",
@@ -78,4 +78,19 @@ test("taskFor leaves skill and instructions out when blank", () => {
   const task = taskFor(issue, "b", { subagents: false, skill: "  ", instructions: "\n" });
   assert.ok(task.startsWith("Work on Linear issue"));
   assert.doesNotMatch(task, /Instructions/);
+});
+
+test("checkoutOf finds the checkout a branch is on, main checkout included", () => {
+  const porcelain = "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\n"
+    + "worktree /wt/feat\nHEAD def\nbranch refs/heads/dan/feat\n\nworktree /wt/detached\nHEAD 123\ndetached\n";
+  assert.equal(checkoutOf(porcelain, "main"), "/repo");
+  assert.equal(checkoutOf(porcelain, "dan/feat"), "/wt/feat");
+  assert.equal(checkoutOf(porcelain, "dan"), null);
+  assert.equal(checkoutOf("", "main"), null);
+});
+
+test("taskFor says when the checkout already existed", () => {
+  const issue = { identifier: "ENG-1", title: "T", url: "https://linear.app/x", description: "" };
+  assert.match(taskFor(issue, "b", { existing: true }), /existing checkout of branch b; keep any uncommitted work/);
+  assert.match(taskFor(issue, "b", {}), /fresh worktree on branch b\./);
 });

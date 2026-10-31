@@ -8,7 +8,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
 import { exec, run, props, closeOverlay, theme, knownAgents, home, shared, setShared } from "herdr";
 import { adapterFor } from "./agents.js";
-import { branchFor, worktreeFolder, branchProblem, taskFor } from "./task.js";
+import { branchFor, worktreeFolder, branchProblem, checkoutOf, taskFor } from "./task.js";
 
 const LAST_CHOICE = "linear-agent.last";
 const MODEL_CACHE = "linear-agent.models";
@@ -51,18 +51,27 @@ async function mainCheckout(cwd, on) {
   return common.out.endsWith("/.git") ? common.out.slice(0, -5) : common.out;
 }
 
+// A local branch as it is; one only on origin tracks it; a new one starts from the default branch.
+async function addArgs(main, on, branch, path) {
+  if ((await git(main, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], on)).ok) return ["worktree", "add", path, branch];
+  if ((await git(main, ["fetch", "origin", branch], on)).ok) return ["worktree", "add", "--track", "-b", branch, path, `origin/${branch}`];
+  return ["worktree", "add", "-b", branch, path, await baseRef(main, on)];
+}
+
 // Herdr's own worktree path, so the spaces sidebar nests it and Herdr's worktree dialog can remove it.
+// A branch already checked out (in the main checkout or another worktree) is worked on there: git
+// allows one checkout per branch. { folder, existing }.
 async function createWorktree(cwd, on, branch, identifier) {
   const problem = branchProblem(branch);
   if (problem) throw new Error(problem);
   const main = await mainCheckout(cwd, on);
   if (!(await git(main, ["check-ref-format", "--branch", branch], on)).ok) throw new Error(`Not a valid branch name: ${branch}`);
+  const checkout = checkoutOf((await git(main, ["worktree", "list", "--porcelain"], on)).out, branch);
+  if (checkout) return { folder: checkout, existing: true };
   const path = `${await userHome(on)}/.herdr/worktrees/${main.split("/").pop()}/${worktreeFolder(branch, identifier)}`;
-  const exists = (await git(main, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], on)).ok;
-  const add = exists ? ["worktree", "add", path, branch] : ["worktree", "add", "-b", branch, path, await baseRef(main, on)];
-  const r = await git(main, add, on);
+  const r = await git(main, await addArgs(main, on, branch, path), on);
   if (!r.ok) throw new Error(r.err.split("\n").pop() || "git worktree add failed");
-  return path;
+  return { folder: path, existing: false };
 }
 
 async function modelsFor(agent, on) {
@@ -80,6 +89,8 @@ export default class LinearAgent extends View {
     this.agents = []; this.models = []; this.filter = "";
     const last = shared(LAST_CHOICE) ?? {};
     this.subagents = Boolean(last.subagents);
+    this.repos = props()?.repos ?? [];
+    this.repo = this.repos[0] ?? { cwd: props()?.cwd, on: props()?.on };
     this.branchInput = InputState.new({ value: this.issue.identifier ? branchFor(this.issue) : "", placeholder: "branch name" });
     this.filterInput = InputState.new({ placeholder: "filter or type a model" });
     this.skillInput = InputState.new({ value: last.skill ?? "", placeholder: "/skill-name (optional)" });
@@ -135,16 +146,17 @@ export default class LinearAgent extends View {
   start(cx) {
     const branch = this.branchInput.value().trim();
     if (this.busy || !this.agent || !branch || !this.issue.identifier) return;
-    const { cwd, on } = props(), agent = this.agent, model = this.chosenModelId(), effort = this.effort;
+    const { cwd, on } = this.repo, agent = this.agent, model = this.chosenModelId(), effort = this.effort;
     const subagents = this.subagents, issue = this.issue;
     const skill = this.skillInput.value().trim(), instructions = this.instructionsInput.value();
     const argv = [...agent.run, ...(adapterFor(agent)?.flags(model, effort) ?? [])];
     this.busy = true; this.error = null;
     cx.spawn(async (cx) => {
       try {
-        const folder = await createWorktree(cwd, on, branch, issue.identifier);
+        const { folder, existing } = await createWorktree(cwd, on, branch, issue.identifier);
         setShared(LAST_CHOICE, { agent: agent.key, model, effort, subagents, skill });
-        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task: taskFor(issue, branch, { subagents, skill, instructions }) });
+        const task = taskFor(issue, branch, { subagents, skill, instructions, existing });
+        run("space.new", { folder, machine: on, tab: issue.identifier, argv, task });
         closeOverlay(props().overlay);
       } catch (e) { this.error = String(e.message ?? e); }
       finally { this.busy = false; cx.notify(); }
@@ -212,16 +224,26 @@ export default class LinearAgent extends View {
         .on_click((_e, cx) => this.start(cx)).child(this.busy ? "Starting…" : "Start agent"));
   }
 
+  // One chip per repository when there's a choice, named after its folder; else the folder itself.
+  repoRow(t) {
+    const { cwd, on } = this.repo;
+    const label = div().text_color(cwd ? t.muted : t.ansi1).truncate()
+      .child(cwd ? `${cwd}${on ? `  ·  ${on}` : ""}` : "No folder: open a space in a git repo");
+    if (this.repos.length < 2) return label;
+    return v_flex().gap(6).child(h_flex().flex_wrap().gap(6).children(this.repos.map((r, i) =>
+      this.chip(`repo-${i}`, `${r.cwd.split("/").pop()}${r.on ? ` · ${r.on}` : ""}`, this.repo === r, () => { this.repo = r; }, t))))
+      .child(label);
+  }
+
   render() {
-    const t = theme(), hasModels = this.agent && adapterFor(this.agent), where = props()?.cwd;
+    const t = theme(), hasModels = this.agent && adapterFor(this.agent);
     // The sections scroll and the footer stays, so Start is always reachable in a short window.
     return v_flex().id("linear-agent").size_full().p(16).gap(14).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(v_flex().flex_none().gap(2)
         .child(div().text_size(14).font_semibold().child(`Start an agent on ${this.issue.identifier}`))
         .child(div().text_color(t.dim).truncate().child(this.issue.title)))
       .child(v_flex().id("linear-agent-body").flex_1().min_h(0).overflow_y_scrollbar().gap(14)
-        .child(this.section("Repository", div().text_color(where ? t.muted : t.ansi1).truncate()
-          .child(where ? `${where}${props()?.on ? `  ·  ${props().on}` : ""}` : "No folder: open a space in a git repo"), t))
+        .child(this.section("Repository", this.repoRow(t), t))
         .child(this.section("Branch", this.field(this.branchInput, t), t))
         .child(this.section("Instructions", div().px(10).py(6).rounded(8).border_1().border_color(t.border).bg(t.background)
           .child(Textarea.new(this.instructionsInput).w_full().text_size(12).text_color(t.foreground)), t))

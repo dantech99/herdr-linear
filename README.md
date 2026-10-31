@@ -56,11 +56,13 @@ Optionally map Linear teams to local repos, so `Agent` works from any space:
 ```json
 {
   "apiKey": "lin_api_...",
-  "repos": { "ENG": "~/dev/app", "OPS": "~/dev/infra" }
+  "repos": { "ENG": "~/dev/app", "OPS": "~/dev/infra" },
+  "repoChoices": ["~/dev/web", "~/dev/docs"]
 }
 ```
 
-Unmapped teams use the repo of the space you're in.
+Unmapped teams use the repo of the space you're in. `repoChoices` adds more repos to the `Agent`
+dialog, as chips beside the default one, for teams that work across several repos.
 
 ## What it touches
 

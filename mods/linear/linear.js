@@ -3,10 +3,15 @@
 
 export const API_URL = "https://api.linear.app/graphql";
 
+// Linear's largest page; a load follows `endCursor` until the last page, up to MAX_PAGES.
+export const PAGE_SIZE = 250;
+export const MAX_PAGES = 40;
+
 // The viewer's open issues: anything not completed or canceled, most recently updated first.
-export const ISSUES_QUERY = `query AssignedIssues {
+export const ISSUES_QUERY = `query AssignedIssues($first: Int!, $after: String) {
   viewer {
-    assignedIssues(first: 100, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+    assignedIssues(first: $first, after: $after, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         id identifier title url branchName priority priorityLabel updatedAt description
         state { name type color }
@@ -27,17 +32,29 @@ export const STATUSES = [
 
 const expand = (path, home) => (path.startsWith("~/") ? `${home}${path.slice(1)}` : path);
 
-// `~/.config/herdr-app/linear.json`: { "apiKey": "lin_api_…", "repos": { "<TEAM KEY>": "~/dev/repo" } }.
+// `~/.config/herdr-app/linear.json`: { "apiKey": "lin_api_…", "repos": { "<TEAM KEY>": "~/dev/repo" },
+// "repoChoices": ["~/dev/other", …] } (more folders on this computer the agent dialog offers).
 export function parseConfig(text, home) {
-  if (text == null) return { apiKey: null, repos: {} };
+  if (text == null) return { apiKey: null, repos: {}, repoChoices: [] };
   let raw;
-  try { raw = JSON.parse(text); } catch { return { apiKey: null, repos: {}, error: "linear.json is not valid JSON" }; }
+  try { raw = JSON.parse(text); } catch { return { apiKey: null, repos: {}, repoChoices: [], error: "linear.json is not valid JSON" }; }
   const apiKey = typeof raw?.apiKey === "string" && raw.apiKey.trim() ? raw.apiKey.trim() : null;
   const repos = {};
   for (const [team, folder] of Object.entries(raw?.repos ?? {})) {
     if (typeof folder === "string" && folder.trim()) repos[team.toUpperCase()] = expand(folder.trim(), home);
   }
-  return { apiKey, repos };
+  const choices = Array.isArray(raw?.repoChoices) ? raw.repoChoices : [];
+  const repoChoices = choices.filter((f) => typeof f === "string" && f.trim()).map((f) => expand(f.trim(), home));
+  return { apiKey, repos, repoChoices };
+}
+
+// The dialog's repositories: the default one first, then each choice on this computer, once each.
+export function repoOptions(start, choices) {
+  const options = start.cwd ? [start] : [];
+  for (const cwd of choices) {
+    if (!options.some((o) => o.cwd === cwd && !o.on)) options.push({ cwd, on: null });
+  }
+  return options;
 }
 
 const isAuthError = (message) => /authenticat/i.test(message ?? "");
@@ -63,6 +80,12 @@ export function parseIssues(json) {
     team: n.team?.key ?? "", teamName: n.team?.name ?? "",
     labels: (n.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color })),
   }));
+}
+
+// The cursor of the next page, or null on the last one.
+export function nextCursor(json) {
+  const info = json?.data?.viewer?.assignedIssues?.pageInfo;
+  return info?.hasNextPage && info.endCursor ? info.endCursor : null;
 }
 
 export function filterIssues(issues, { status, text }) {

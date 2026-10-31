@@ -2,7 +2,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, theme, home, appHome, readTextFile, nextCommand, openOverlay } from "herdr";
-import { API_URL, ISSUES_QUERY, STATUSES, parseConfig, parseIssues, linearError, filterIssues, ago } from "./linear.js";
+import { API_URL, ISSUES_QUERY, PAGE_SIZE, MAX_PAGES, STATUSES, parseConfig, parseIssues, nextCursor, linearError, filterIssues, ago, repoOptions } from "./linear.js";
 import { openUrl } from "./open.js";
 
 const REFRESH_MS = 60000;
@@ -21,15 +21,28 @@ async function loadConfig() {
   return config;
 }
 
-async function fetchIssues(apiKey) {
+async function fetchPage(apiKey, after) {
   const r = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: apiKey },
-    body: JSON.stringify({ query: ISSUES_QUERY }),
+    body: JSON.stringify({ query: ISSUES_QUERY, variables: { first: PAGE_SIZE, after } }),
   });
   const body = await r.text();
   if (!r.ok) throw new Error(linearError(r.status, body));
-  return parseIssues(JSON.parse(body));
+  return JSON.parse(body);
+}
+
+// Every page, following the cursor; MAX_PAGES stops a cursor that never ends.
+async function fetchIssues(apiKey) {
+  const issues = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const json = await fetchPage(apiKey, after);
+    issues.push(...parseIssues(json));
+    after = nextCursor(json);
+    if (!after) break;
+  }
+  return issues;
 }
 
 // The focused pane's folder (else the focused terminal's, else the shown space's) and its machine.
@@ -76,10 +89,12 @@ export default class Linear extends View {
   }
 
   // A team mapped in linear.json works on that folder here; otherwise the space you're in.
+  // `repoChoices` are offered beside it in the dialog.
   startAgent(issue) {
     const { cwd, on } = location(), mapped = this.config?.repos?.[issue.team];
+    const start = { cwd: mapped ?? cwd, on: mapped ? null : on };
     openOverlay({ mod: "linear-agent", kind: "dialog", width: 480, height: 660,
-      props: { issue, cwd: mapped ?? cwd, on: mapped ? null : on } });
+      props: { issue, ...start, repos: repoOptions(start, this.config?.repoChoices ?? []) } });
   }
 
   chip(status, t) {
